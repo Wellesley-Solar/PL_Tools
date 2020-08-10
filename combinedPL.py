@@ -7,7 +7,7 @@ import glob
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from PLfunctions import sample_name, find_nearest, weighted_PL
+from PLfunctions import sample_name, find_nearest, weighted_PL, trim_data
 
 #%% set up details of experiment and process data into a single dataframe
 path = r'/Volumes/GoogleDrive/Shared drives/Wellesley Solar/Current Projects/ Hoke Effect/PL_data_300720/MAPbI2Br/1hour' # use your path
@@ -38,8 +38,6 @@ delay = restart_sec-start_sec
 
 #%%
 # TODO should make it such that this can accept an arbitrary experimental sequence
-# XXX this currently doesnt work - appears to build the correct dataframe
-#but following steps don't work 
 
 f_times = []
 df = pd.read_csv(all_files[0])
@@ -77,6 +75,8 @@ PL = fulldata[:,1:]
 #%%
 if first_background:
     PL_back = PL
+    ref = find_nearest(wave,900) #wavelength you will use as background
+
     for x in range(len(fullset.columns)-1):
         PL_back[:,x] = PL[:,x] - np.mean(PL[(ref-10):(ref+10),x]) 
     for x in range(len(fullset.columns)-1):

@@ -30,6 +30,7 @@ def weighted_PL(wave,intensity):
 def weighted_PL_lim(wave,intensity,lim1,lim2):
     start = find_nearest(wave,lim1)
     end = find_nearest(wave,lim2)
-    return np.sum(wave[lim1:lim2]*intensity[lim1:lim2])/np.sum(intensity[lim1:lim2])
+    return np.sum(wave[start:end]*intensity[stat:end])/np.sum(intensity[start:end])
 
-# %%
+def exp_fit(x,a,b,c):
+    return -a*np.exp(x*-b)+c
