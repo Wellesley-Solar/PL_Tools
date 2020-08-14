@@ -11,7 +11,7 @@ import glob
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-#from PLfunctions import sample_name, find_nearest, weighted_PL
+from PLfunctions import sample_name, find_nearest, weighted_PL, trim_data
 #%% set up details of experiment and process data into a single dataframe
 path = r'/Volumes/GoogleDrive/Shared drives/Wellesley Solar/Current Projects/ Hoke Effect/PL_data_300720/MAPbI2Br/58min' # use your path
 all_files = sorted(glob.glob(path + "/*.csv"))

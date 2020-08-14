@@ -7,7 +7,8 @@ import glob
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from PLfunctions import sample_name, find_nearest, weighted_PL, trim_data
+from scipy.optimize import curve_fit
+from PLfunctions import sample_name, find_nearest, weighted_PL, trim_data, exp_fit
 
 #%% set up details of experiment and process data into a single dataframe
 path = r'/Volumes/GoogleDrive/Shared drives/Wellesley Solar/Current Projects/ Hoke Effect/PL_data_300720/MAPbI2Br/1hour' # use your path
@@ -117,4 +118,16 @@ ax2.set_ylabel('Weighted Average PL [nm]',size=14)#Define y-axis label
 ax2.set_ylim([650,850])
 plt.plot(f_times,cofm_PL, 'ko--', label=chem)
 plt.legend(loc="lower right")#Put legend in upper left hand corner
+# %% Do curve fitting of PL transient
+popt,pcov = curve_fit(exp_fit, f_times[0:-1], cofm_PL[1:], p0=[40,.01,740], bounds=([0,0,600], [900,1,900]), maxfev=6000)
+plt.figure(num = 3, figsize=(8,6))
+fig3,ax3 = plt.subplots()
+ax3.set_xlabel('Time [s]',size=14) #Define x-axis label
+ax3.set_ylabel('Weighted Average PL [nm]',size=14)#Define y-axis label
+#ax3.set_ylim([650,850])
+plt.plot(f_times[0:-1],cofm_PL[1:], 'ko--', label=chem)
+plt.plot(f_times,exp_fit(f_times,*popt), 'r--', label='fit')
+plt.legend(loc="lower right")#Put legend in upper left hand corner
+
+
 # %%

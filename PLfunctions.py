@@ -33,4 +33,8 @@ def weighted_PL_lim(wave,intensity,lim1,lim2):
     return np.sum(wave[start:end]*intensity[start:end])/np.sum(intensity[start:end])
 
 def exp_fit(x,a,b,c):
-    return -a*np.exp(x*-b)+c
+    x = np.array(x)
+    return -1*a*np.exp(x*-1*b)+c
+
+
+# %%
