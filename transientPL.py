@@ -23,6 +23,7 @@ OD = '1p5'
 delay = 120 #time experiment is running before data 
 lim1 = 550 #high energy cutoff
 lim2 = 850 #low energy cutoff
+first_background = True #if first file should be used as background
 
 fulltime = 85*60 #total measument in seconds
 integration = 10 #integration time in ms
@@ -49,11 +50,27 @@ wave = fulldata[:,0]
 PL = fulldata[:,1:]
 
 # subtract background
-ref = find_nearest(wave,900) #wavelength you will use as background
 PL_back = PL
-for x in range(len(fullset.columns)-1):
-    PL_back[:,x] = PL[:,x] - np.mean(PL[(ref-10):(ref+10),x]) 
-wave, PL_back = trim_data(wave,PL_back,lim1,lim2)
+if first_background:
+    PL_back = PL
+    ref = find_nearest(wave,900) #wavelength you will use as background
+
+    for x in range(len(fullset.columns)-1):
+        PL_back[:,x] = PL[:,x] - np.mean(PL[(ref-10):(ref+10),x]) 
+    for x in range(len(fullset.columns)-1):
+        PL_back[:,x] = PL_back[:,x] - PL_back[:,0]
+    wave, PL_back = trim_data(wave,PL_back,lim1,lim2)
+
+else: 
+    # subtract background
+    ref = find_nearest(wave,900) #wavelength you will use as background
+    PL_back = PL
+
+    for x in range(len(fullset.columns)-1):
+        PL_back[:,x] = PL[:,x] - np.mean(PL[(ref-10):(ref+10),x]) 
+
+    wave, PL_back = trim_data(wave,PL_back,lim1,lim2)
+
 #%% Plot every file
 plt.figure(num = 1, figsize=(8,6))
 fig1,ax1 = plt.subplots()

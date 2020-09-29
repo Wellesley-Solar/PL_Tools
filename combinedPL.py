@@ -11,10 +11,10 @@ from scipy.optimize import curve_fit
 from PLfunctions import sample_name, find_nearest, weighted_PL, trim_data, exp_fit
 
 #%% set up details of experiment and process data into a single dataframe
-path = r'/Volumes/GoogleDrive/Shared drives/Wellesley Solar/Current Projects/ Hoke Effect/PL_data_300720/MAPbI2Br/1hour' # use your path
+path = r'/Volumes/GoogleDrive/Shared drives/Wellesley Solar/Current Projects/ Hoke Effect/PL_data_300720/MAPbIBr90/1hour' # use your path
 all_files = sorted(glob.glob(path + "/*.csv"))
 
-chem = 'MAPbI2Br'
+chem = 'MAPbIBr67'
 exp = '1 hour'
 laser = '488nm'
 power = '5mW'
@@ -29,7 +29,7 @@ lim2 = 850 #low energy cutoff
 #%% initialize timing and determine delays
 # TODO this cell should be a function
 
-time_1 = all_files[0].split(" ")[-2].split("_") 
+time_1 = all_files[0].split(" ")[6].split("_") 
 start_time = [int(x) for x in time_1]
 start_sec = start_time[0]*60**2+start_time[1]*60+start_time[2]
 time_2 = all_files[exp_seq[0][1]].split(" ")[-2].split("_") 
