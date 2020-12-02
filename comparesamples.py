@@ -26,11 +26,11 @@ Br90 = np.array(pd.read_csv(all_files[-1],index_col=None, header=0))
 #%% trim data
 lim1 = 560
 lim2 = 875
-wave_75, Br75_trim = trim_data(Br75[:,1],Br75[:,2:],lim1,680)
+wave_75, Br75_trim = trim_data(Br75[:,1],Br75[:,2:],lim1,lim2)
 wave_50, Br50_trim = trim_data(Br50[:,1],Br50[:,2:],lim1,lim2)
 wave_33, Br33_trim = trim_data(Br33[:,1],Br33[:,2:],lim1,lim2)
 wave_0, Br0_trim = trim_data(Br0[:,1],Br0[:,2:],lim1,lim2)
-wave_67, Br67_trim = trim_data(Br67[:,1],Br67[:,2:],lim1,680)
+wave_67, Br67_trim = trim_data(Br67[:,1],Br67[:,2:],lim1,lim2)
 wave_90, Br90_trim = trim_data(Br90[:,1],Br90[:,2:],lim1,lim2)
 # %% Make plots of initial PL (a.k.a. time zero)
 plt.figure(num = 1, figsize=(8,6))
@@ -50,6 +50,15 @@ plt.legend(loc="upper right")#Put legend in upper left hand corner
 #TODO determine peak PL wavelength for doing initial bandgap PL
 fig1.savefig(path+"/10ms.png")
 
+#%% Determine initial wavelength
+initial_PL = []
+initial_PL.append(wave_0[np.abs(Br0_trim[:,1] - max(Br0_trim[:,1])).argmin()])
+initial_PL.append(wave_33[np.abs(Br33_trim[:,1] - max(Br33_trim[:,1])).argmin()])
+initial_PL.append(wave_50[np.abs(Br50_trim[:,1] - max(Br50_trim[:,1])).argmin()])
+initial_PL.append(wave_67[np.abs(Br67_trim[:,1] - max(Br67_trim[:,1])).argmin()])
+initial_PL.append(wave_75[np.abs(Br75_trim[:,2] - max(Br75_trim[:,2])).argmin()])
+initial_PL= [1240/x for x in initial_PL]
+chem = [0, .33, .50, .67, .75]
 # %% Make plots of at 2 minutes
 plt.figure(num = 1, figsize=(8,6))
 fig1,ax1 = plt.subplots()
@@ -79,8 +88,43 @@ plt.plot(Br33[:,1],(Br33[:,-1]-Br33[:,2])/max(Br33[:,-1]-Br33[:,2]), 'b-',label=
 plt.plot(Br50[:,1],(Br50[:,-1]-Br50[:,2])/max(Br50[:,-1]-Br50[:,2]), 'r-',label='x=0.50')
 plt.plot(Br67[:,1],(Br67[:,-1]-Br67[:,2])/max(Br67[:,-1]-Br67[:,2]), 'g-',label='x=0.67')
 plt.plot(Br75[:,1],(Br75[:,-1]-Br75[:,2])/max(Br75[:,-1]-Br75[:,2]), 'm-', label='x=0.75')
-#plt.plot(Br90[:,1],(Br90[:,-1]-Br90[:,3])/max(Br90[:,-1]-Br90[:,3]), 'y-',label='x=0.90')
+plt.plot(Br90[:,1],(Br90[:,-1]-Br90[:,3])/max(Br90[:,-1]-Br90[:,3]), 'y-',label='x=0.90')
 plt.legend(loc="upper left")#Put legend in upper left hand corner
 fig1.savefig(path+"/1hour.png")
 
+
+# %% Final Peak in eV
+final_PL = []
+popt,pcov = curve_fit(gaussian, wave_0, Br0_trim[:,-1], p0 = [1000, 800, 10], maxfev=8000)
+plt.plot(wave_0, Br0_trim[:,-1], 'ko')
+plt.plot(wave_0,gaussian(wave_0,*popt),'k--')
+p0 = popt
+final_PL.append(popt[1])
+popt,pcov = curve_fit(gaussian, wave_33, Br33_trim[:,-1], p0, maxfev=8000)
+plt.plot(wave_33, Br33_trim[:,-1], 'ko')
+plt.plot(wave_33,gaussian(wave_33,*popt),'k--')
+p0 = popt
+final_PL.append(popt[1])
+popt,pcov = curve_fit(gaussian, wave_50, Br50_trim[:,-1], p0, maxfev=8000)
+plt.plot(wave_50, Br50_trim[:,-1], 'ko')
+plt.plot(wave_50,gaussian(wave_50,*popt),'k--')
+p0 = popt
+final_PL.append(popt[1])
+popt,pcov = curve_fit(gaussian, wave_67, Br67_trim[:,-1], p0, maxfev=8000)
+plt.plot(wave_67, Br67_trim[:,-1], 'ko')
+plt.plot(wave_67,gaussian(wave_67,*popt),'k--')
+p0 = popt
+final_PL.append(popt[1])
+popt,pcov = curve_fit(gaussian, wave_75, Br75_trim[:,-1], p0, maxfev=8000)
+plt.plot(wave_75, Br75_trim[:,-1], 'ko')
+plt.plot(wave_75,gaussian(wave_75,*popt),'k--')
+p0 = popt
+final_PL.append(popt[1])
+final_PLev=[1240/x for x in final_PL]
+popt,pcov = curve_fit(gaussian, wave_90, Br90_trim[:,-1], p0, maxfev=8000)
+plt.plot(wave_90, Br90_trim[:,-1], 'ko')
+plt.plot(wave_90,gaussian(wave_90,*popt),'k--')
+p0 = popt
+final_PL.append(popt[1])
+final_PLev=[1240/x for x in final_PL]
 # %%

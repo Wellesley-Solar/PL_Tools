@@ -11,10 +11,10 @@ from scipy.optimize import curve_fit
 from PLfunctions import sample_name, find_nearest, weighted_PL, trim_data, exp_fit
 
 #%% set up details of experiment and process data into a single dataframe
-path = r'/Volumes/GoogleDrive/Shared drives/Wellesley Solar/Current Projects/ Hoke Effect/PL_data_300720/MAPbIBr90/1hour' # use your path
+path = r'/Volumes/GoogleDrive/Shared drives/Wellesley Solar/Current Projects/ Hoke Effect/PL_data_300720/MAPbI5Br5/1hour' # use your path
 all_files = sorted(glob.glob(path + "/*.csv"))
 
-chem = 'MAPbIBr67'
+chem = 'MAPbIBr50'
 exp = '1 hour'
 laser = '488nm'
 power = '5mW'
@@ -115,7 +115,7 @@ plt.figure(num = 2, figsize=(8,6))
 fig2,ax2 = plt.subplots()
 ax2.set_xlabel('Time [s]',size=14) #Define x-axis label
 ax2.set_ylabel('Weighted Average PL [nm]',size=14)#Define y-axis label
-ax2.set_ylim([650,850])
+ax2.set_ylim([650,760])
 plt.plot(f_times,cofm_PL, 'ko--', label=chem)
 plt.legend(loc="lower right")#Put legend in upper left hand corner
 # %% Do curve fitting of PL transient
@@ -123,6 +123,7 @@ popt,pcov = curve_fit(exp_fit, f_times[0:-1], cofm_PL[1:], p0=[40,.01,740], boun
 plt.figure(num = 3, figsize=(8,6))
 fig3,ax3 = plt.subplots()
 ax3.set_xlabel('Time [s]',size=14) #Define x-axis label
+ax3.set_xscale('log')
 ax3.set_ylabel('Weighted Average PL [nm]',size=14)#Define y-axis label
 #ax3.set_ylim([650,850])
 plt.plot(f_times[0:-1],cofm_PL[1:], 'ko--', label=chem)
