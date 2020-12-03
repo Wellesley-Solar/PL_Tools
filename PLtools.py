@@ -13,6 +13,19 @@ from numpy import random
 from scipy import signal
 from BaselineRemoval import BaselineRemoval
 
+
+c_light = 2.99792458e8 * 1e9 #
+h_plank = 4.1357e-15 
+
+def Wavelen2eV(wavelen):
+    """
+    wavelen: array like, an array of e&m wavelength in nm
+    """
+    eV_tmp=[c_light/each*h_plank for each in wavelen]
+
+    return np.array(eV_tmp)
+
+
 class PLspec:
     """
     PLspec accepts the path to a .csv file containing spectrometer output with two columns 
@@ -34,8 +47,8 @@ class PLspec:
             None
         
         """
-        self.c = 2.99792458e8 * 1e9 #
-        self.h = 4.1357e-15 #eV*s
+        self.c = c_light#
+        self.h = h_plank#eV*s
         self.file = file
         self.og = pd.read_csv(self.file, index_col=None, header=0)
         baseObj=BaselineRemoval(self.og["Intensity"])
@@ -47,6 +60,7 @@ class PLspec:
         self.df = self.og
         self.formatData()
         
+
     def formatData(self):
         """Perform basic intensity weighted average calculations and save data to appropriate attributes
         
@@ -59,9 +73,15 @@ class PLspec:
         """
         self.W = self.df["Wavelength"]
         self.I = self.df["Intensity"]
+        self.sum_cnt=np.log(sum(self.df["Intensity"]))
         self.E = self.c/self.W*self.h
         self.IweightedW = sum(self.I*self.W)/sum(self.I)
         self.IweightedE = sum(self.I*self.E)/sum(self.I)
+        # Weighted Variance
+        self.IstdW = np.sqrt(sum(self.I*(self.W - self.IweightedW)**2)/sum(self.I))
+        self.IstdE = np.sqrt(sum(self.I*(self.E - self.IweightedE)**2)/sum(self.I))
+        self.IskewW = sum(self.I*(self.W - self.IweightedW)**3)/sum(self.I)
+        self.IskewE = sum(self.I*(self.E - self.IweightedE)**3)/sum(self.I)
         
     def plotW(self):
         """Plot the spectrum in the format of intensity versus wavelength
@@ -156,7 +176,7 @@ class PLspec:
     #     self.IweightedE = sum(self.I*self.E)/sum(self.I)
 
 class PLevol:
-    def __init__(self, folder):
+    def __init__(self, folder,t):
         """Initiates the PLevol class by converting full spectrum csv into individual PLspec class.
         A series of intensity weighted wavelength over time and another series of intensity weighted
         photon energy over time is calculated.
@@ -170,9 +190,18 @@ class PLevol:
         """
         self.og = [PLspec(file) for file in sorted(glob.glob(folder+"/*.csv"))]
         self.PLs = self.og
-        self.Wavgseries = [spec.IweightedW for spec in self.PLs]
-        self.Eavgseries = [each.IweightedE for each in self.PLs]
-        
+        self.df = pd.DataFrame(
+            {
+                "t": np.array(t),
+                "W": np.array([each.IweightedW for each in self.PLs]),
+                "E": np.array([each.IweightedE for each in self.PLs]),
+                "sum_cnt": np.array([each.sum_cnt for each in self.PLs]),
+                "IstdW": np.array([each.IstdW for each in self.PLs]),
+                "IstdE": np.array([each.IstdE for each in self.PLs]),
+                "IskewW": np.array([each.IskewW for each in self.PLs]),
+                "IskewE": np.array([each.IskewE for each in self.PLs]),
+            })
+
     def restore(self):
         """Remove the cutoff for the spectrum data
         
@@ -201,15 +230,17 @@ class PLevol:
         
         """
         [PL.narrow(Wmin, Wmax) for PL in self.og]
-        self.Wavgseries = [each.IweightedW for each in self.PLs]
-        self.Eavgseries = [each.IweightedE for each in self.PLs]
+        self.df["W"] = np.array([each.IweightedW for each in self.PLs])
+        self.df["E"] = np.array([each.IweightedE for each in self.PLs])
+        self.df["sum_cnt"] = np.array([each.sum_cnt for each in self.PLs])
+
 
     # def sub_baseline(self, mod="Z"):
     #     [PL.sub_bline(mod) for PL in self.og]
-    #     self.Wavgseries = [each.IweightedW for each in self.PLs]
-    #     self.Eavgseries = [each.IweightedE for each in self.PLs]
+    #     self.df_Wavg = [each.IweightedW for each in self.PLs]
+    #     self.df_Eavg = [each.IweightedE for each in self.PLs]
 
-    def peakAvgseries(self,make_plot=False):
+    def df_plot(self,make_plot=True, mode="W"):
         """ Plot a series of peak height weighted average from self.output_series
 
         Args:
@@ -221,22 +252,43 @@ class PLevol:
         # self.avgSeries = [PL.W for PL in self.og]
         if make_plot==True:
             fig, ax = plt.subplots(1,1)
-            ax.scatter(np.arange(len(self.Wavgseries)), self.Wavgseries, label="Full-Spectrum-Weighted")
-            ax.set_ylabel("Wavelength (nm)")
-            ax.set_ylabel("Frame Number")
-            ax.set_title("Full-Spectrum-Weighted Wavelength Average")
+            if mode == "W":
+                ax.scatter(self.df["t"], self.df["W"], label="Spectrum-Weighted")
+                ax.set_ylabel("Wavelength (nm)")
+            elif mode == "E":
+                ax.scatter(self.df["t"], self.df["E"], label="Spectrum-Weighted")
+                ax.set_ylabel("Photon Energy (eV)")
+            elif mode == "S": # maximum in each one
+                ax.scatter(self.df["t"], self.df["sum_cnt"], label="Spectrum-Weighted")
+                ax.set_ylabel("Log Sum Intensity")
+            elif mode == "stdE": 
+                ax.scatter(self.df["t"], self.df["IstdE"], label="Spectrum-Weighted")
+                ax.set_ylabel("Weighted Standard Deviation (eV)")
+            elif mode == "stdW": 
+                ax.scatter(self.df["t"], self.df["IstdW"], label="Spectrum-Weighted")
+                ax.set_ylabel("Weighted Standard Deviation (nm)")
+            else:
+                print("Mode Not Implemented")
+            ax.set_xlabel("Time (s)")
        
 
 # Some of the following peak fitting code was originally written by Chris Ostrouchov
 # You can find them here: https://chrisostrouchov.com/post/peak_fit_xrd_python/
 # Qingmu Deng rewrote most of the original code for PL Fitting for the Belis Lab at Wellesley College
 class Fitter():
-    def __init__(self, lbound=600, ubound=800):
+    def __init__(self, bd_l_w=600, bd_u_w=800, thres_amp=40,
+                 bd_l_sigma=5, bd_u_sigma=40,min_amp=1e-6,
+                 wiggle=10
+                ):
         self.output_series=[]
         self.first_pass=True
-        self.lbound=lbound
-        self.ubound=ubound
-
+        self.bd_l_w=bd_l_w
+        self.bd_u_w=bd_u_w
+        self.thres_amp=thres_amp
+        self.bd_l_sigma=bd_l_sigma
+        self.bd_u_sigma=bd_u_sigma
+        self.min_amp=min_amp
+        self.wiggle=wiggle
 
     def basicparam(self, spec):
         x = spec['x']
@@ -249,18 +301,19 @@ class Fitter():
 
 
     def spec_gen(self, x, y, peaks, model='GaussianModel'):
+        tmp= [{'type': model} for i in range(5)]
         return {
             'x': x,
             'y': y,
-            'model': [{'type': model} for i in range(len(peaks))]
+            'model': tmp#len(peaks))]
             }
 
-    def common_param_set(self, mdl, peak, error, y_max):
+    def common_param_set(self, mdl, peak, y_max):
         """ Specify bounds for relevant model parameters
         Args:
             mdl: a lmfit model object
             peak: a list of [peak_x_value, peak_y_value]
-            error: freedom a peak's center is given to the left and right in nm
+            wiggle: freedom a peak's center is given to the left and right in nm
             y_max: maximum y of the spectrum
         
         Returns:
@@ -268,10 +321,10 @@ class Fitter():
         """
         # mdl.set_param_hint('sigma', min=5)
         # if self.zero_bg:
-        mdl.set_param_hint('sigma', min=5, max=35)
-        mdl.set_param_hint('center', min=peak[0]-error, max=peak[0]+error)
-        mdl.set_param_hint('height', min=1e-6, max=1.1*y_max)
-        mdl.set_param_hint('amplitude', min=1e-6)
+        mdl.set_param_hint('sigma', min=self.bd_l_sigma, max=self.bd_u_sigma)
+        mdl.set_param_hint('center', min=peak[0]-self.wiggle, max=peak[0]+self.wiggle)
+        mdl.set_param_hint('height', min=self.min_amp, max=1.1*y_max)
+        mdl.set_param_hint('amplitude', min=self.min_amp)
         
     def model_params_update(self, comp_model, model, params, model_params):
         """ Incorporate individual model and model parameters into composite models
@@ -316,7 +369,7 @@ class Fitter():
         # print(x)
         print(peak_indicies)
         for peak_index in peak_indicies:
-            if x[peak_index] > self.lbound and x[peak_index] < self.ubound:
+            if x[peak_index] > self.bd_l_w and x[peak_index] < self.bd_u_w:
                 temp.append(peak_index)
         peak_indicies=np.array(temp)
         spec = self.spec_gen(x, y, peak_indicies)
@@ -327,13 +380,13 @@ class Fitter():
         return peak_indicies, composite_model, model_params
     
 
-    def my_modelgen(self, spec, peak_indicies, peak_widths, error=10):
+    def my_modelgen(self, spec, peak_indicies, peak_widths):
         """ Generate an initial composite model and model parameters based on CWT peak detection
         Args:
             spec: initial model specification variable, see spec_gen()
             peak_indicies: peak indices identified by CWT
             peak_widths: allowable peak width for CWT search
-            error: freedom a peak's center is given to the left and right in nm
+            wiggle: freedom a peak's center is given to the left and right in nm
         
         Returns:
             
@@ -349,10 +402,10 @@ class Fitter():
             prefix = f'm{i}_'
             model = getattr(models, basis_func['type'])(prefix=prefix)
             if basis_func['type'] in ['GaussianModel', 'LorentzianModel', 'VoigtModel','PseudoVoigtModel']: # for now VoigtModel has gamma constrained to sigma
-                model.set_param_hint('sigma', min=5, max=40)#x_range)
-                model.set_param_hint('center', min=x[peak_index]-error, max=x[peak_index]+error)
-                model.set_param_hint('height', min=1e-6, max=1.1*y_max)
-                model.set_param_hint('amplitude', min=1e-6)
+                model.set_param_hint('sigma', min=self.bd_l_sigma, max=self.bd_u_sigma)
+                model.set_param_hint('center', min=x[peak_index]-self.wiggle, max=x[peak_index]+self.wiggle)
+                model.set_param_hint('height', min=self.min_amp, max=1.1*y_max)
+                model.set_param_hint('amplitude', min=self.min_amp)
                 # avoid using default parameter guess
                 default_params = {
                     prefix+'center': x[peak_index],
@@ -394,7 +447,7 @@ class Fitter():
         peak_indicies = signal.find_peaks_cwt(y, peak_widths)
         peaks_cwt=[]
         for peak_index in peak_indicies:
-            if x[peak_index] > self.lbound and x[peak_index] < self.ubound:
+            if x[peak_index] > self.bd_l_w and x[peak_index] < self.bd_u_w:
                 peaks_cwt.append([x[peak_index],y[peak_index]])
         
         # Consider the peak positions from the last fitting routine as well
@@ -404,30 +457,30 @@ class Fitter():
             for each in last_out.params:
                 if each.find("center") != -1:
                     amp = last_out.params[each[:3]+'amplitude']
-                    if amp.value < 40:
+                    if amp.value < self.thres_amp:
                         continue
                     last_peaks.append([last_out.params[each].value, last_out.params[each[:3]+'height'].value,\
                                     last_out.params[each[:3]+'sigma'].value])
         
         # Generate a first model based on CWT-extracted peaks
         pk_spec = self.spec_gen(x, y, peaks_cwt)
-        pk_model, pk_params = self.cwt_modelgen(pk_spec, peaks_cwt, peak_widths, error=10)
+        pk_model, pk_params = self.cwt_modelgen(pk_spec, peaks_cwt, peak_widths)
         # Generate a second model based on last peakfitting parameters
         lt_spec = self.spec_gen(x, y, last_peaks)
-        lt_model, lt_params = self.last_modelgen(pk_spec, last_peaks, peak_widths, error=10)
+        lt_model, lt_params = self.last_modelgen(pk_spec, last_peaks, peak_widths)
         
         # Get the CWT peak locations for comparison
         peaks_cwt=[each[0] for each in peaks_cwt]
         return peaks_cwt, pk_model, pk_params, lt_model, lt_params
 
 
-    def last_modelgen(self, spec, peaks, peak_widths, error=10):
+    def last_modelgen(self, spec, peaks, peak_widths):
         """ Generate a composite model and model parameters based on last fitting parameters
         Args:
             spec: initial model specification variable, see spec_gen()
             peak_indicies: peak indices identified by CWT
             peak_widths: allowable peak width for CWT search
-            error: freedom a peak's center is given to the left and right in nm
+            wiggle: freedom a peak's center is given to the left and right in nm
         
         Returns:
             composite_model: fully assembled composite model for fitting
@@ -444,7 +497,7 @@ class Fitter():
             if basis_func['type'] in ['GaussianModel', 'LorentzianModel', 'VoigtModel','PseudoVoigtModel']: # for now VoigtModel has gamma constrained to sigma
 
                 # model is passed by reference here so no need to return anything
-                self.common_param_set(model, peak,error, y_max)
+                self.common_param_set(model, peak, y_max)
 
                 # avoid using default parameter guess
                 default_params = {
@@ -467,13 +520,13 @@ class Fitter():
         return composite_model, params
                                  
 
-    def cwt_modelgen(self, spec, peaks, peak_widths, error=10):
+    def cwt_modelgen(self, spec, peaks, peak_widths):
         """ Generate a composite model and model parameters based on CWT peak detections
         Args:
             spec: initial model specification variable, see spec_gen()
             peak_indicies: peak indices identified by CWT
             peak_widths: allowable peak width for CWT search
-            error: freedom a peak's center is given to the left and right in nm
+            wiggle: freedom a peak's center is given to the left and right in nm
         
         Returns:
             composite_model: fully assembled composite model for fitting
@@ -489,7 +542,7 @@ class Fitter():
             model = getattr(models, basis_func['type'])(prefix=prefix)
             if basis_func['type'] in ['GaussianModel', 'LorentzianModel', 'VoigtModel','PseudoVoigtModel']: # for now VoigtModel has gamma constrained to sigma
                 # model is passed by reference here so no need to return anything
-                self.common_param_set(model, peak,error, y_max)
+                self.common_param_set(model, peak, y_max)
                 # avoid using default parameter guess
                 default_params = {
                     prefix+'center': peak[0],
@@ -510,7 +563,8 @@ class Fitter():
 
         return composite_model, params
 
-    def fit(self, PLevol_obj, nframe=5, startIndex=2, zero_bg=True, verbose=True):
+
+    def fit(self, PLevol_obj, nframe=5, startIndex=2, zero_bg=True, verbose=True, mthd="lbfgsb", neval=10):
         """
         Args:
             PLevol_obj: a PLevol object, see class PLevol()
@@ -522,6 +576,7 @@ class Fitter():
             None
         """
         self.output_series=[]
+        self.param_num=[]
         self.zero_bg=zero_bg
         self.first_pass=True
         for i in np.arange(0,nframe)+startIndex:
@@ -538,11 +593,11 @@ class Fitter():
             out2 = None
             if self.first_pass:
                 peaks_found, composite_model, params = self.peaks2spec(x, y)
-                output = composite_model.fit(y, params, x=x)
+                output = composite_model.fit(y, params, x=x, method=mthd,max_nfex=neval)
             else:
                 peaks_found, pk_model, pk_params, lt_model, lt_params = self.both2spec(x, y)
-                out1 = pk_model.fit(y, pk_params, x=x)
-                out2 = lt_model.fit(y, lt_params, x=x)
+                out1 = pk_model.fit(y, pk_params, x=x, method=mthd,max_nfex=neval)
+                out2 = lt_model.fit(y, lt_params, x=x, method=mthd,max_nfex=neval)
                 # out12diff=math.abs(out2.chisqr-out1.chisqr)
                 # if out12diff/min(out2.chisqr,out1.chisqr) < 0.1:
 
@@ -551,7 +606,8 @@ class Fitter():
                 else:
                     output=out2
                 if verbose: print("Frame", index ,"CWT Chi-sqr",out1.chisqr,"\t Last  Chi-sqr", out2.chisqr)
-            
+                
+            print(peaks_found)
             if verbose:
                 fig, ax = plt.subplots(1, 3, sharey=True, figsize=(15, 4))
                 fig.suptitle('Frame '+str(i), fontsize=16)
@@ -576,8 +632,15 @@ class Fitter():
                         ax[0].axvline(x=x[peak], c='black', linestyle='dotted')
 
                 comps = output.eval_components(x=x)
+                first_m=True
                 for each in comps:
                     ax[0].plot(x, comps[each], '--', label=each)
+                    if first_m:
+                        accu_comps = comps[each]
+                        first_m=False
+                    else:
+                        accu_comps += comps[each]
+                ax[0].plot(x, accu_comps, ':', label="sum")
                 ax[0].legend()
                 ax[0].set_title("Best Fit")
                 ax[1].scatter(x, y, s=4, c='y')
@@ -586,6 +649,8 @@ class Fitter():
 
             self.output_series.append(output)
             self.first_pass=False # other than the first iteration, use both2spec to find the best fit
+            self.param_num.append(len(output.params))
+
 
     def post_process(self):
         self.min_w=[]
@@ -628,7 +693,7 @@ class Fitter():
                 numer += out.params[each].value*out.params[each[:3]+'height'].value*out.params[each[:3]+'sigma'].value
         return numer/denom
 
-    def peakAvgseries(self,make_plot=False):
+    def peakAvgseries(self,make_plot=False, mode=None):
         """ Plot a series of peak height weighted average from self.output_series
 
         Args:
@@ -640,7 +705,12 @@ class Fitter():
         self.avgSeries = [self.peak_avg(each) for each in self.output_series]
         if make_plot==True:
             fig, ax = plt.subplots(1,1)
-            ax.scatter(np.arange(len(self.avgSeries)), self.avgSeries, label="Peak-Height-Weighted")
+            if mode==None:
+                ax.scatter(np.arange(len(self.avgSeries)), self.avgSeries, label="Peak-Height-Weighted")
+            elif mode=="min":
+                ax.scatter(np.arange(len(self.avgSeries)), self.min_w, label="Peak")
+            elif mode=="max":
+                ax.scatter(np.arange(len(self.avgSeries)), self.max_w, label="Peak")
             ax.set_ylabel("Wavelength (nm)")
             ax.set_ylabel("Frame Number")
             ax.set_title("Peak-Height-Weighted Wavelength Average")
