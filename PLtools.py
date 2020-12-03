@@ -11,6 +11,7 @@ import scipy.optimize
 from lmfit import models
 from numpy import random
 from scipy import signal
+from BaselineRemoval import BaselineRemoval
 
 class PLspec:
     """
@@ -21,7 +22,7 @@ class PLspec:
     upon initializing and saved in PLspec.IweightedW or PLspec.IweightedE.
     
     """
-    def __init__(self, file):
+    def __init__(self, file, mod="Z"):
         """Initiates the PLspec class by reading a spectrum csv into a dataframe
         
         Args:
@@ -37,6 +38,12 @@ class PLspec:
         self.h = 4.1357e-15 #eV*s
         self.file = file
         self.og = pd.read_csv(self.file, index_col=None, header=0)
+        baseObj=BaselineRemoval(self.og["Intensity"])
+        if mod=="Z":
+            self.og["Intensity"]=baseObj.ZhangFit(lambda_=1e4,porder=3,itermax=30)
+        elif mod=="I":
+            self.og["Intensity"]=baseObj.IModPoly(3)
+        
         self.df = self.og
         self.formatData()
         
@@ -139,6 +146,14 @@ class PLspec:
         """
         return height*np.exp(-(x - mu)**2/(2*sigma**2))
 
+    # def sub_bline(self, mod="Z"):
+    #     baseObj=BaselineRemoval(self.I)
+    #     if mod=="Z":
+    #         self.I=baseObj.ZhangFit(lambda_=1e4,porder=3,itermax=30)
+    #     elif mod=="I":
+    #         self.I=baseObj.IModPoly(3)
+    #     self.IweightedW = sum(self.I*self.W)/sum(self.I)
+    #     self.IweightedE = sum(self.I*self.E)/sum(self.I)
 
 class PLevol:
     def __init__(self, folder):
@@ -189,13 +204,38 @@ class PLevol:
         self.Wavgseries = [each.IweightedW for each in self.PLs]
         self.Eavgseries = [each.IweightedE for each in self.PLs]
 
+    # def sub_baseline(self, mod="Z"):
+    #     [PL.sub_bline(mod) for PL in self.og]
+    #     self.Wavgseries = [each.IweightedW for each in self.PLs]
+    #     self.Eavgseries = [each.IweightedE for each in self.PLs]
+
+    def peakAvgseries(self,make_plot=False):
+        """ Plot a series of peak height weighted average from self.output_series
+
+        Args:
+            make_plot: boolean, if True, plots the series of peak height weighted averages
+        
+        Returns:
+            None
+        """
+        # self.avgSeries = [PL.W for PL in self.og]
+        if make_plot==True:
+            fig, ax = plt.subplots(1,1)
+            ax.scatter(np.arange(len(self.Wavgseries)), self.Wavgseries, label="Full-Spectrum-Weighted")
+            ax.set_ylabel("Wavelength (nm)")
+            ax.set_ylabel("Frame Number")
+            ax.set_title("Full-Spectrum-Weighted Wavelength Average")
+       
+
 # Some of the following peak fitting code was originally written by Chris Ostrouchov
 # You can find them here: https://chrisostrouchov.com/post/peak_fit_xrd_python/
 # Qingmu Deng rewrote most of the original code for PL Fitting for the Belis Lab at Wellesley College
 class Fitter():
-    def __init__(self):
+    def __init__(self, lbound=600, ubound=800):
         self.output_series=[]
         self.first_pass=True
+        self.lbound=lbound
+        self.ubound=ubound
 
 
     def basicparam(self, spec):
@@ -226,7 +266,9 @@ class Fitter():
         Returns:
             None
         """
-        mdl.set_param_hint('sigma', min=5, max=50)
+        # mdl.set_param_hint('sigma', min=5)
+        # if self.zero_bg:
+        mdl.set_param_hint('sigma', min=5, max=35)
         mdl.set_param_hint('center', min=peak[0]-error, max=peak[0]+error)
         mdl.set_param_hint('height', min=1e-6, max=1.1*y_max)
         mdl.set_param_hint('amplitude', min=1e-6)
@@ -272,12 +314,13 @@ class Fitter():
     #     print(peak_index)
         temp=[]
         # print(x)
-        # print(peak_indicies)
+        print(peak_indicies)
         for peak_index in peak_indicies:
-            if x[peak_index] > 600.0 and x[peak_index] < 800:
+            if x[peak_index] > self.lbound and x[peak_index] < self.ubound:
                 temp.append(peak_index)
         peak_indicies=np.array(temp)
         spec = self.spec_gen(x, y, peak_indicies)
+        print(peak_indicies)
         
         composite_model, model_params = self.my_modelgen(spec, peak_indicies, peak_widths)
 
@@ -306,7 +349,7 @@ class Fitter():
             prefix = f'm{i}_'
             model = getattr(models, basis_func['type'])(prefix=prefix)
             if basis_func['type'] in ['GaussianModel', 'LorentzianModel', 'VoigtModel','PseudoVoigtModel']: # for now VoigtModel has gamma constrained to sigma
-                model.set_param_hint('sigma', min=5, max=50)#x_range)
+                model.set_param_hint('sigma', min=5, max=40)#x_range)
                 model.set_param_hint('center', min=x[peak_index]-error, max=x[peak_index]+error)
                 model.set_param_hint('height', min=1e-6, max=1.1*y_max)
                 model.set_param_hint('amplitude', min=1e-6)
@@ -351,7 +394,7 @@ class Fitter():
         peak_indicies = signal.find_peaks_cwt(y, peak_widths)
         peaks_cwt=[]
         for peak_index in peak_indicies:
-            if x[peak_index] > 600.0 and x[peak_index] < 800:
+            if x[peak_index] > self.lbound and x[peak_index] < self.ubound:
                 peaks_cwt.append([x[peak_index],y[peak_index]])
         
         # Consider the peak positions from the last fitting routine as well
@@ -467,7 +510,7 @@ class Fitter():
 
         return composite_model, params
 
-    def fit(self, PLevol_obj, nframe=5, startIndex=2, verbose=True):
+    def fit(self, PLevol_obj, nframe=5, startIndex=2, zero_bg=True, verbose=True):
         """
         Args:
             PLevol_obj: a PLevol object, see class PLevol()
@@ -479,15 +522,16 @@ class Fitter():
             None
         """
         self.output_series=[]
+        self.zero_bg=zero_bg
         self.first_pass=True
         for i in np.arange(0,nframe)+startIndex:
     
             index=i
             x = np.array(PLevol_obj.PLs[index].W)
-            y = np.array(PLevol_obj.PLs[index].I - PLevol_obj.PLs[0].I)
-            fig, ax = plt.subplots(1, 3, sharey=True, figsize=(15, 4))
-            fig.suptitle('Frame '+str(i), fontsize=16)
-            ax[0].scatter(x, y, s=4, c='b')
+            if self.zero_bg:
+                y = np.array(PLevol_obj.PLs[index].I - PLevol_obj.PLs[0].I)
+            else:
+                y = np.array(PLevol_obj.PLs[index].I)# - 635
             
             output = None
             out1 = None
@@ -499,6 +543,9 @@ class Fitter():
                 peaks_found, pk_model, pk_params, lt_model, lt_params = self.both2spec(x, y)
                 out1 = pk_model.fit(y, pk_params, x=x)
                 out2 = lt_model.fit(y, lt_params, x=x)
+                # out12diff=math.abs(out2.chisqr-out1.chisqr)
+                # if out12diff/min(out2.chisqr,out1.chisqr) < 0.1:
+
                 if out1.chisqr <= out2.chisqr:
                     output=out1
                 else:
@@ -506,6 +553,9 @@ class Fitter():
                 if verbose: print("Frame", index ,"CWT Chi-sqr",out1.chisqr,"\t Last  Chi-sqr", out2.chisqr)
             
             if verbose:
+                fig, ax = plt.subplots(1, 3, sharey=True, figsize=(15, 4))
+                fig.suptitle('Frame '+str(i), fontsize=16)
+                ax[0].scatter(x, y, s=4, c='b')
                 if not self.first_pass:
                     for peak in peaks_found:
                         ax[0].axvline(x=peak, c='black', linestyle='dotted')
@@ -536,6 +586,30 @@ class Fitter():
 
             self.output_series.append(output)
             self.first_pass=False # other than the first iteration, use both2spec to find the best fit
+
+    def post_process(self):
+        self.min_w=[]
+        for output in self.output_series:
+            params=output.params
+            tmp_ctr=[]
+            for i,v in enumerate(params):
+                if "center" in v:
+        #             print(i, v, params[v].value,params[v].stderr)
+                    tmp_ctr.append([ v, params[v].value,params[v].stderr])
+            tmp_ctr.sort(key = lambda x: x[1],reverse=False)
+            self.min_w.append(tmp_ctr[0][1])
+
+        self.max_w=[]
+        for output in self.output_series:
+            params=output.params
+            tmp_ctr=[]
+            for i,v in enumerate(params):
+                if "center" in v:
+        #             print(i, v, params[v].value,params[v].stderr)
+                    tmp_ctr.append([ v, params[v].value,params[v].stderr])
+            tmp_ctr.sort(key = lambda x: x[1],reverse=True)
+            self.max_w.append(tmp_ctr[0][1])
+
     
     def peak_avg(self, out):
         """ Calculated peak height weighted average
@@ -550,22 +624,23 @@ class Fitter():
         denom=0
         for each in out.params:
             if each.find("center") != -1:
-                denom += out.params[each[:3]+'height'].value
-                numer += out.params[each].value*out.params[each[:3]+'height'].value
+                denom += out.params[each[:3]+'height'].value*out.params[each[:3]+'sigma'].value
+                numer += out.params[each].value*out.params[each[:3]+'height'].value*out.params[each[:3]+'sigma'].value
         return numer/denom
 
-    def plot_peakAvg(self):
+    def peakAvgseries(self,make_plot=False):
         """ Plot a series of peak height weighted average from self.output_series
 
         Args:
-            None
+            make_plot: boolean, if True, plots the series of peak height weighted averages
         
         Returns:
             None
         """
-        fig, ax = plt.subplots(1,1)
         self.avgSeries = [self.peak_avg(each) for each in self.output_series]
-        ax.scatter(np.arange(len(self.avgSeries)), self.avgSeries, label="Peak-Height-Weighted")
-        ax.set_ylabel("Wavelength (nm)")
-        ax.set_ylabel("Frame Number")
-        ax.set_title("Peak-Height-Weighted Wavelength Average")
+        if make_plot==True:
+            fig, ax = plt.subplots(1,1)
+            ax.scatter(np.arange(len(self.avgSeries)), self.avgSeries, label="Peak-Height-Weighted")
+            ax.set_ylabel("Wavelength (nm)")
+            ax.set_ylabel("Frame Number")
+            ax.set_title("Peak-Height-Weighted Wavelength Average")
