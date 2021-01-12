@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from scipy.optimize import curve_fit
 # from PLfunctions import sample_name, find_nearest, weighted_PL, trim_data, exp_fit
-import math
 import scipy.optimize 
 from lmfit import models
 from numpy import random
 from scipy import signal
 from BaselineRemoval import BaselineRemoval
+import seaborn as sn
 
 
 c_light = 2.99792458e8 * 1e9 #
@@ -47,21 +47,19 @@ class PLspec:
             None
         
         """
-        self.c = c_light#
-        self.h = h_plank#eV*s
         self.file = file
-        self.og = pd.read_csv(self.file, index_col=None, header=0)
-        baseObj=BaselineRemoval(self.og["Intensity"])
+        self.og = pd.read_csv(self.file, index_col=None, header=0).rename(columns={"Wavelength": "W", "Intensity": "I"})
+        baseObj=BaselineRemoval(self.og["I"])
         if mod=="Z":
-            self.og["Intensity"]=baseObj.ZhangFit(lambda_=1e4,porder=3,itermax=30)
+            self.og["I"]=baseObj.ZhangFit(lambda_=1e4,porder=3,itermax=30)
         elif mod=="I":
-            self.og["Intensity"]=baseObj.IModPoly(3)
+            self.og["I"]=baseObj.IModPoly(3)
         
         self.df = self.og
-        self.formatData()
+        self.format_data()
         
 
-    def formatData(self):
+    def format_data(self):
         """Perform basic intensity weighted average calculations and save data to appropriate attributes
         
         Args:
@@ -71,19 +69,20 @@ class PLspec:
             None
         
         """
-        self.W = self.df["Wavelength"]
-        self.I = self.df["Intensity"]
-        self.sum_cnt = np.log(sum(self.df["Intensity"]))
-        self.E = self.c/self.W*self.h
-        self.IweightedW = sum(self.I*self.W)/sum(self.I)
-        self.IweightedE = sum(self.I*self.E)/sum(self.I)
+        # self.df = self.df.rename(columns={"Wavelength": "W", "Intensity": "I"})
+        # self.df["W"] = self.df["Wavelength"]
+        # self.df["I"] = self.df["Intensity"]
+        self.df["E"] = c_light/self.df["W"]*h_plank
+        self.sum_cnt = np.log(sum(self.df["I"]))
+        self.IweightedW = sum(self.df["I"]*self.df["W"])/sum(self.df["I"])
+        self.IweightedE = sum(self.df["I"]*self.df["E"])/sum(self.df["I"])
         # Weighted Variance
-        self.IstdW = np.sqrt(sum(self.I*(self.W - self.IweightedW)**2)/sum(self.I))
-        self.IstdE = np.sqrt(sum(self.I*(self.E - self.IweightedE)**2)/sum(self.I))
-        self.IskewW = sum(self.I*(self.W - self.IweightedW)**3)/sum(self.I)
-        self.IskewE = sum(self.I*(self.E - self.IweightedE)**3)/sum(self.I)
+        self.IstdW = np.sqrt(sum(self.df["I"]*(self.df["W"] - self.IweightedW)**2)/sum(self.df["I"]))
+        self.IstdE = np.sqrt(sum(self.df["I"]*(self.df["E"] - self.IweightedE)**2)/sum(self.df["I"]))
+        self.IskewW = sum(self.df["I"]*(self.df["W"] - self.IweightedW)**3)/sum(self.df["I"])
+        self.IskewE = sum(self.df["I"]*(self.df["E"] - self.IweightedE)**3)/sum(self.df["I"])
         
-    def plotW(self):
+    def plot(self, mode="E"):
         """Plot the spectrum in the format of intensity versus wavelength
         
         Args:
@@ -94,25 +93,8 @@ class PLspec:
         
         """
         fig, ax = plt.subplots()
-        ax.scatter(self.W, self.I,s=4)
-        ax.set_xlabel("Wavelength(nm)")
-        ax.set_ylabel("Intensity(Counts)")
-        ax.set_title(self.file, {'fontsize': "small",})
-        
-    
-    def plotE(self):
-        """Plot the spectrum in the format of intensity versus photon energy
-        
-        Args:
-            None
-        
-        Returns:
-            None
-        
-        """
-        fig, ax = plt.subplots()
-        ax.scatter(self.E, self.I,s=4)
-        ax.set_xlabel("Photon Energy(eV)")
+        ax.scatter(self.df[mode], self.df["I"], s=4)
+        ax.set_xlabel(mode)
         ax.set_ylabel("Intensity(Counts)")
         ax.set_title(self.file, {'fontsize': "small",})
         
@@ -128,7 +110,7 @@ class PLspec:
         
         """
         self.df = self.og 
-        self.formatData()
+        self.format_data()
 
         
     def narrow(self, Wmin=550, Wmax=1000):
@@ -146,10 +128,10 @@ class PLspec:
         """
         self.Wmin = Wmin
         self.Wmax = Wmax
-        self.minCond = self.df["Wavelength"]>self.Wmin
-        self.maxCond = self.df["Wavelength"]<self.Wmax
+        self.minCond = self.df["W"]>self.Wmin
+        self.maxCond = self.df["W"]<self.Wmax
         self.df = self.df[self.minCond & self.maxCond]
-        self.formatData()
+        self.format_data()
         
     
     def gaussian(self, x, mu, sigma, height):
@@ -190,9 +172,13 @@ class PLevol:
         """
         self.og = [PLspec(file) for file in sorted(glob.glob(folder+"/*.csv"))]
         self.PLs = self.og
-        self.df = pd.DataFrame(
+        self.t = t
+        self.df = self.format_data()
+
+    def format_data(self):
+        return pd.DataFrame(
             {
-                "t": np.array(t),
+                "t": np.array(self.t),
                 "W": np.array([each.IweightedW for each in self.PLs]),
                 "E": np.array([each.IweightedE for each in self.PLs]),
                 "sum_cnt": np.array([each.sum_cnt for each in self.PLs]),
@@ -201,13 +187,15 @@ class PLevol:
                 "IskewW": np.array([each.IskewW for each in self.PLs]),
                 "IskewE": np.array([each.IskewE for each in self.PLs]),
             })
-        self.matrix = np.matrix([each.I.values[320:1000] for each in self.PLs])
+
+    def BH_cosmic_remove(self, cosmic_prom=24):
+        self.S = np.matrix([each.df["I"].values for each in self.PLs])
         self.mat_bar = np.matrix([
-            signal.savgol_filter(each.I.values[320:1000], window_length=5, polyorder=1) for each in self.PLs
+            signal.savgol_filter(each.df["I"].values, window_length=5, polyorder=1) for each in self.PLs
         ])
-        self.covar_mat = self.matrix * self.matrix.T
+        self.covar_mat = self.S * self.S.T
         self.numer = np.multiply(self.covar_mat, self.covar_mat)
-        self.C_nm = np.zeros([self.matrix.shape[0], self.matrix.shape[0]])
+        self.C_nm = np.zeros([self.S.shape[0], self.S.shape[0]])
         for i in range(self.C_nm.shape[0]):
             for j in range(self.C_nm.shape[1]):
                 if i == j:
@@ -215,22 +203,36 @@ class PLevol:
                     continue
                 self.C_nm[i,j] = self.numer[i,j]/(self.covar_mat[i,i]*self.covar_mat[j,j])
 
-        self.sigma_n = float(np.median(self.noise_std_est(self.matrix, self.mat_bar)))
-        self.S_p = self.sim_spec_res(self.matrix)
-        self.matrix_after = np.zeros(self.matrix.shape)
-        self.matrix_swap = np.zeros(self.matrix.shape)
-        self.mat_diff = self.matrix - self.S_p 
+        self.sigma_n = float(np.median(self.noise_std_est(self.S, self.mat_bar)))
+        self.S_p = self.sim_spec_res(self.S)
+        self.S_after = np.zeros(self.S.shape)
+        self.S_swap = np.zeros(self.S.shape)
+        self.mat_diff = self.S - self.S_p 
         for i, row in enumerate(self.mat_diff):
-            if sum(np.array(row)[0] > stdnum * float(self.sigma_n)) > 10:
+            if sum(np.array(row)[0] > cosmic_prom * float(self.sigma_n)) > 10:
                 continue
             for j, col in enumerate(np.array(row)[0].tolist()):
-                if col <= stdnum * self.sigma_n:
-                    self.matrix_after[i, j] = self.matrix[i, j]
+                if col <= cosmic_prom * self.sigma_n:
+                    self.S_after[i, j] = self.S[i, j]
                     # continue
-                elif col > stdnum * self.sigma_n:
-                    self.matrix_after[i, j] = self.S_p[i, j]
-                    self.matrix_swap[i, j] = 1#self.mat_diff[i, j]
+                elif col > cosmic_prom * self.sigma_n:
+                    self.S_after[i, j] = self.S_p[i, j]
+                    self.S_swap[i, j] = 1#self.mat_diff[i, j]
+        for i, row in enumerate(self.S_after):
+            df_tmp = pd.DataFrame(
+                {
+                    "W": self.PLs[i].df["W"],
+                    "I": np.array(row)
+                }
+            )
+            self.PLs[i].df = df_tmp
+            self.PLs[i].format_data()
+        self.df = self.format_data()
 
+
+    def heatmap(self, matrix, figsize = (20, 10), cmap="hot"):
+        fig, scatter = plt.subplots(figsize = (20,10))
+        sn.heatmap(matrix, cmap="hot")
 
     def noise_std_est(self, m1, m2):
         mat_diff = m1 - m2
@@ -244,9 +246,10 @@ class PLevol:
 
     def sim_spec_res(self, m1):
         sim_spec = []
-        for frame in range(self.matrix.shape[0]):
+        for frame in range(self.S.shape[0]):
             sim_spec.append(int(np.where(self.C_nm[frame,:]==max(self.C_nm[frame,:]))[0]))
         return m1[sim_spec, :]
+
 
     def restore(self):
         """Remove the cutoff for the spectrum data
@@ -260,6 +263,7 @@ class PLevol:
         """
         self.PLs = self.og 
         
+
     def narrow(self, Wmin=550, Wmax=1000):
         """Enact the cutoff for the spectrum data
         
@@ -286,7 +290,7 @@ class PLevol:
     #     self.df_Wavg = [each.IweightedW for each in self.PLs]
     #     self.df_Eavg = [each.IweightedE for each in self.PLs]
 
-    def df_plot(self,make_plot=True, mode="W"):
+    def df_plot(self, mode="W"):
         """ Plot a series of peak height weighted average from self.output_series
 
         Args:
@@ -295,27 +299,10 @@ class PLevol:
         Returns:
             None
         """
-        # self.avgSeries = [PL.W for PL in self.og]
-        if make_plot==True:
-            fig, ax = plt.subplots(1,1)
-            if mode == "W":
-                ax.scatter(self.df["t"], self.df["W"], label="Spectrum-Weighted")
-                ax.set_ylabel("Wavelength (nm)")
-            elif mode == "E":
-                ax.scatter(self.df["t"], self.df["E"], label="Spectrum-Weighted")
-                ax.set_ylabel("Photon Energy (eV)")
-            elif mode == "S": # maximum in each one
-                ax.scatter(self.df["t"], self.df["sum_cnt"], label="Spectrum-Weighted")
-                ax.set_ylabel("Log Sum Intensity")
-            elif mode == "stdE": 
-                ax.scatter(self.df["t"], self.df["IstdE"], label="Spectrum-Weighted")
-                ax.set_ylabel("Weighted Standard Deviation (eV)")
-            elif mode == "stdW": 
-                ax.scatter(self.df["t"], self.df["IstdW"], label="Spectrum-Weighted")
-                ax.set_ylabel("Weighted Standard Deviation (nm)")
-            else:
-                print("Mode Not Implemented")
-            ax.set_xlabel("Time (s)")
+        fig, ax = plt.subplots(1,1)
+        ax.scatter(self.df["t"], self.df[mode], label="Spectrum-Weighted")
+        ax.set_ylabel(mode)
+        ax.set_xlabel("Time (s)")
        
 
 # Some of the following peak fitting code was originally written by Chris Ostrouchov
@@ -338,6 +325,7 @@ class Fitter():
         self.num_peak = num_peak
         self.PLevol_obj = PLevol_obj
 
+
     def basicparam(self, spec):
         x = spec['x']
         y = spec['y']
@@ -355,6 +343,7 @@ class Fitter():
             'y': y,
             'model': tmp#len(peaks))]
             }
+
 
     def common_param_set(self, mdl, peak, y_max):
         """ Specify bounds for relevant model parameters
@@ -374,6 +363,7 @@ class Fitter():
         mdl.set_param_hint('height', min=self.min_amp, max=1.1*y_max)
         mdl.set_param_hint('amplitude', min=self.min_amp)
         
+
     def model_params_update(self, comp_model, model, params, model_params):
         """ Incorporate individual model and model parameters into composite models
         Args:
@@ -630,11 +620,11 @@ class Fitter():
         for i in np.arange(0,nframe-startIndex)+startIndex:
     
             index = i
-            x = np.array(self.PLevol_obj.PLs[index].W)
+            x = np.array(self.PLevol_obj.PLs[index].df["W"])
             if self.zero_bg:
-                y = np.array(self.PLevol_obj.PLs[index].I - self.PLevol_obj.PLs[0].I)
+                y = np.array(self.PLevol_obj.PLs[index].df["I"] - self.PLevol_obj.PLs[0].df["I"])
             else:
-                y = np.array(self.PLevol_obj.PLs[index].I)# - 635
+                y = np.array(self.PLevol_obj.PLs[index].df["I"])# - 635
             
             output = None
             out1 = None
