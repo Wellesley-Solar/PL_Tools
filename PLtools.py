@@ -158,7 +158,7 @@ class PLspec:
     #     self.IweightedE = sum(self.I*self.E)/sum(self.I)
 
 class PLevol:
-    def __init__(self, folder, t, stdnum=5):
+    def __init__(self, folder, t, bl_mod="Z"):
         """Initiates the PLevol class by converting full spectrum csv into individual PLspec class.
         A series of intensity weighted wavelength over time and another series of intensity weighted
         photon energy over time is calculated.
@@ -170,10 +170,11 @@ class PLevol:
             None
         
         """
-        self.og = [PLspec(file) for file in sorted(glob.glob(folder+"/*.csv"))]
+        self.og = [PLspec(file, mod=bl_mod) for file in sorted(glob.glob(folder+"/*.csv"))]
         self.PLs = self.og
         self.t = t
         self.df = self.format_data()
+        self.S = np.matrix([each.df["I"].values for each in self.PLs])
 
     def format_data(self):
         return pd.DataFrame(
@@ -188,7 +189,7 @@ class PLevol:
                 "IskewE": np.array([each.IskewE for each in self.PLs]),
             })
 
-    def BH_cosmic_remove(self, cosmic_prom=24):
+    def BH_cosmic_remove(self, cosmic_prom=24, startIndex=0):
         self.S = np.matrix([each.df["I"].values for each in self.PLs])
         self.mat_bar = np.matrix([
             signal.savgol_filter(each.df["I"].values, window_length=5, polyorder=1) for each in self.PLs
@@ -204,12 +205,13 @@ class PLevol:
                 self.C_nm[i,j] = self.numer[i,j]/(self.covar_mat[i,i]*self.covar_mat[j,j])
 
         self.sigma_n = float(np.median(self.noise_std_est(self.S, self.mat_bar)))
-        self.S_p = self.sim_spec_res(self.S)
+        self.S_p = self.sim_spec_res(self.S, startIndex=startIndex)
         self.S_after = np.zeros(self.S.shape)
         self.S_swap = np.zeros(self.S.shape)
         self.mat_diff = self.S - self.S_p 
         for i, row in enumerate(self.mat_diff):
             if sum(np.array(row)[0] > cosmic_prom * float(self.sigma_n)) > 10:
+                self.S_after[i, :] = self.S[i, :]
                 continue
             for j, col in enumerate(np.array(row)[0].tolist()):
                 if col <= cosmic_prom * self.sigma_n:
@@ -244,10 +246,11 @@ class PLevol:
         return sig_n
 
 
-    def sim_spec_res(self, m1):
-        sim_spec = []
-        for frame in range(self.S.shape[0]):
-            sim_spec.append(int(np.where(self.C_nm[frame,:]==max(self.C_nm[frame,:]))[0]))
+    def sim_spec_res(self, m1, startIndex=0):
+        sim_spec = np.arange(m1.shape[0])
+        for frame in np.arange(0, m1.shape[0]-startIndex)+startIndex:
+            tmp=np.where(self.C_nm[frame,:]==max(self.C_nm[frame,:]))[0]
+            sim_spec[frame] = int(tmp)
         return m1[sim_spec, :]
 
 
