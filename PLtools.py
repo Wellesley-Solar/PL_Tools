@@ -35,7 +35,7 @@ class PLspec:
     upon initializing and saved in PLspec.IweightedW or PLspec.IweightedE.
     
     """
-    def __init__(self, file, mod="Z"):
+    def __init__(self, file, xy_name=["Wavelength", "Intensity"], mod="Z"):
         """Initiates the PLspec class by reading a spectrum csv into a dataframe
         
         Args:
@@ -48,12 +48,12 @@ class PLspec:
         
         """
         self.file = file
-        self.og = pd.read_csv(self.file, index_col=None, header=0).rename(columns={"Wavelength": "W", "Intensity": "I"})
+        self.og = pd.read_csv(self.file, index_col=None, header=0).rename(columns={xy_name[0]: "W", xy_name[1]: "I"})
         baseObj=BaselineRemoval(self.og["I"])
         if mod=="Z":
             self.og["I"]=baseObj.ZhangFit(lambda_=1e4,porder=3,itermax=30)
         elif mod=="I":
-            self.og["I"]=baseObj.IModPoly(3)
+            self.og["I"]=baseObj.IModPoly(15)
         
         self.df = self.og
         self.format_data()
@@ -73,6 +73,7 @@ class PLspec:
         # self.df["W"] = self.df["Wavelength"]
         # self.df["I"] = self.df["Intensity"]
         self.df["E"] = c_light/self.df["W"]*h_plank
+        # print(self.df["I"], type(self.df["I"].values))
         self.sum_cnt = np.log(sum(self.df["I"]))
         self.IweightedW = sum(self.df["I"]*self.df["W"])/sum(self.df["I"])
         self.IweightedE = sum(self.df["I"]*self.df["E"])/sum(self.df["I"])
@@ -81,6 +82,7 @@ class PLspec:
         self.IstdE = np.sqrt(sum(self.df["I"]*(self.df["E"] - self.IweightedE)**2)/sum(self.df["I"]))
         self.IskewW = sum(self.df["I"]*(self.df["W"] - self.IweightedW)**3)/sum(self.df["I"])
         self.IskewE = sum(self.df["I"]*(self.df["E"] - self.IweightedE)**3)/sum(self.df["I"])
+        self.df = self.df.reset_index(drop=True)
         
     def plot(self, mode="E"):
         """Plot the spectrum in the format of intensity versus wavelength
@@ -158,7 +160,7 @@ class PLspec:
     #     self.IweightedE = sum(self.I*self.E)/sum(self.I)
 
 class PLevol:
-    def __init__(self, folder, t, bl_mod="Z"):
+    def __init__(self, folder, t, xy_name=["Wavelength", "Intensity"], bl_mod="Z"):
         """Initiates the PLevol class by converting full spectrum csv into individual PLspec class.
         A series of intensity weighted wavelength over time and another series of intensity weighted
         photon energy over time is calculated.
@@ -170,13 +172,17 @@ class PLevol:
             None
         
         """
-        self.og = [PLspec(file, mod=bl_mod) for file in sorted(glob.glob(folder+"/*.csv"))]
+        self.og = [PLspec(file, xy_name=xy_name, mod=bl_mod) for file in sorted(glob.glob(folder+"/*.csv"))]
         self.PLs = self.og
         self.t = t
         self.df = self.format_data()
         self.S = np.matrix([each.df["I"].values for each in self.PLs])
 
     def format_data(self):
+        self.df_alt = pd.DataFrame(
+            np.transpose([PL.df.I.values for PL in self.PLs]), columns=np.arange(len(self.PLs)).astype(str)
+        )
+        self.df_alt["E"] = self.PLs[0].df.E
         return pd.DataFrame(
             {
                 "t": np.array(self.t),
@@ -189,7 +195,28 @@ class PLevol:
                 "IskewE": np.array([each.IskewE for each in self.PLs]),
             })
 
-    def BH_cosmic_remove(self, cosmic_prom=24, startIndex=0):
+
+    def ridge(self, n=5, fset=0.15, alpha=0.3, startIndex=0):
+        fig, ax = plt.subplots()
+        i_frames = startIndex+np.linspace(0,len(self.df_alt.columns)-1, n, endpoint=False,)
+        i_frames = i_frames[::-1]
+        for i, v in enumerate(i_frames):
+            # ii = len(self.df_alt.columns)-2-int(v)
+        #     print(v)
+            ax.plot(self.df_alt.E, self.df_alt[str(int(v))]/max(self.df_alt[str(int(v))])-fset*i,"")
+            ax.fill_between(
+                self.df_alt.E, self.df_alt[str(int(v))]/max(self.df_alt[str(int(v))])-fset*i,
+                -fset*i,
+                alpha=alpha,
+                label="Frame "+str(int(v)),
+            )
+        ax.axes.get_yaxis().set_visible(False)
+        ax.set_xlabel("PL Emission (eV)")
+        ax.set_title("Normalized Intensity (a.u.)")
+        ax.legend()
+
+
+    def BH_cosmic_remove(self, cosmic_prom=24, startIndex=0, max_pixel=10):
         self.S = np.matrix([each.df["I"].values for each in self.PLs])
         self.mat_bar = np.matrix([
             signal.savgol_filter(each.df["I"].values, window_length=5, polyorder=1) for each in self.PLs
@@ -210,7 +237,7 @@ class PLevol:
         self.S_swap = np.zeros(self.S.shape)
         self.mat_diff = self.S - self.S_p 
         for i, row in enumerate(self.mat_diff):
-            if sum(np.array(row)[0] > cosmic_prom * float(self.sigma_n)) > 10:
+            if sum(np.array(row)[0] > cosmic_prom * float(self.sigma_n)) > max_pixel:
                 self.S_after[i, :] = self.S[i, :]
                 continue
             for j, col in enumerate(np.array(row)[0].tolist()):
@@ -312,9 +339,10 @@ class PLevol:
 # You can find them here: https://chrisostrouchov.com/post/peak_fit_xrd_python/
 # Qingmu Deng rewrote most of the original code for PL Fitting for the Belis Lab at Wellesley College
 class Fitter():
-    def __init__(self, PLevol_obj, bd_l_w=600, bd_u_w=800, thres_amp=40,
-                 bd_l_sigma=5, bd_u_sigma=40,min_amp=1e-6,
-                 wiggle=10, num_peak=4
+    def __init__(self, PLevol_obj, bd_l_w=600, bd_u_w=800, thres_amp=3,
+                 bd_l_sigma=5, bd_u_sigma=40, min_amp=1e-6,
+                 wiggle=10, num_peak=4, peak_widths=(10, 200), 
+                 model='GaussianModel', ftol=1e-10
                 ):
         self.output_series = []
         self.first_pass = True
@@ -327,7 +355,9 @@ class Fitter():
         self.wiggle = wiggle
         self.num_peak = num_peak
         self.PLevol_obj = PLevol_obj
-
+        self.peak_widths = peak_widths
+        self.model = model
+        self.ftol = ftol
 
     def basicparam(self, spec):
         x = spec['x']
@@ -339,8 +369,8 @@ class Fitter():
         return None, None, x, y, x_min, x_max, x_range, y_max
 
 
-    def spec_gen(self, x, y, peaks, model='GaussianModel'):
-        tmp= [{'type': model} for i in range(self.num_peak)]
+    def spec_gen(self, x, y, peaks):
+        tmp= [{'type': self.model} for i in range(self.num_peak)]
         return {
             'x': x,
             'y': y,
@@ -390,7 +420,7 @@ class Fitter():
         return comp_model, params
 
 
-    def peaks2spec(self, x, y, peak_widths=(10,200)):
+    def peaks2spec(self, x, y):
         """Generate an initial model from CWT peak fitting
         Calls my_modelgen()
 
@@ -404,7 +434,7 @@ class Fitter():
             composite_model: fully assembled composite model for fitting
             model_params: fully assembled composite model parameters for fitting
         """
-        peak_indicies = signal.find_peaks_cwt(y, peak_widths)
+        peak_indicies = signal.find_peaks_cwt(y, self.peak_widths)
     #     print(peak_index)
         temp = []
         # print(x)
@@ -416,12 +446,12 @@ class Fitter():
         spec = self.spec_gen(x, y, peak_indicies)
         print(peak_indicies)
         
-        composite_model, model_params = self.my_modelgen(spec, peak_indicies, peak_widths)
+        composite_model, model_params = self.my_modelgen(spec, peak_indicies)
 
         return peak_indicies, composite_model, model_params
     
 
-    def my_modelgen(self, spec, peak_indicies, peak_widths):
+    def my_modelgen(self, spec, peak_indicies):
         """ Generate an initial composite model and model parameters based on CWT peak detection
         Args:
             spec: initial model specification variable, see spec_gen()
@@ -469,7 +499,7 @@ class Fitter():
                                  
                                     
                                     
-    def both2spec(self, x, y, peak_widths=(10,200)):
+    def both2spec(self, x, y):
         """ Generate both a model from CWT peak fitting and a model from last peak fitting parameters
         Calls last_modelgen() and cwt_modelgen()    
         
@@ -485,7 +515,7 @@ class Fitter():
         """
         
         # Do a fresh extraction of peak position with CWT
-        peak_indicies = signal.find_peaks_cwt(y, peak_widths)
+        peak_indicies = signal.find_peaks_cwt(y, self.peak_widths)
         peaks_cwt = []
         for peak_index in peak_indicies:
             if x[peak_index] > self.bd_l_w and x[peak_index] < self.bd_u_w:
@@ -497,25 +527,25 @@ class Fitter():
             last_out=self.output_series[-1]
             for each in last_out.params:
                 if each.find("center") != -1:
-                    amp = last_out.params[each[:3]+'amplitude']
-                    if amp.value < self.thres_amp:
-                        continue
+                    amp = last_out.params[each[:3]+'height']
+                    # if amp.value < self.thres_amp:
+                    #     continue
                     last_peaks.append([last_out.params[each].value, last_out.params[each[:3]+'height'].value,\
                                     last_out.params[each[:3]+'sigma'].value])
         
         # Generate a first model based on CWT-extracted peaks
         pk_spec = self.spec_gen(x, y, peaks_cwt)
-        pk_model, pk_params = self.cwt_modelgen(pk_spec, peaks_cwt, peak_widths)
+        pk_model, pk_params = self.cwt_modelgen(pk_spec, peaks_cwt)
         # Generate a second model based on last peakfitting parameters
         lt_spec = self.spec_gen(x, y, last_peaks)
-        lt_model, lt_params = self.last_modelgen(pk_spec, last_peaks, peak_widths)
+        lt_model, lt_params = self.last_modelgen(pk_spec, last_peaks)
         
         # Get the CWT peak locations for comparison
         peaks_cwt = [each[0] for each in peaks_cwt]
         return peaks_cwt, pk_model, pk_params, lt_model, lt_params
 
 
-    def last_modelgen(self, spec, peaks, peak_widths):
+    def last_modelgen(self, spec, peaks):
         """ Generate a composite model and model parameters based on last fitting parameters
         Args:
             spec: initial model specification variable, see spec_gen()
@@ -561,7 +591,7 @@ class Fitter():
         return composite_model, params
                                  
 
-    def cwt_modelgen(self, spec, peaks, peak_widths):
+    def cwt_modelgen(self, spec, peaks):
         """ Generate a composite model and model parameters based on CWT peak detections
         Args:
             spec: initial model specification variable, see spec_gen()
@@ -588,7 +618,7 @@ class Fitter():
                 default_params = {
                     prefix+'center': peak[0],
                     prefix+'height': peak[1],
-                    prefix+'sigma': x_range / len(x) * np.min(peak_widths)#peak[2]
+                    prefix+'sigma': x_range / len(x) * np.min(self.peak_widths)#peak[2]
                 }
             else:
                 raise NotImplemented(f'model {basis_func["type"]} not implemented yet')
@@ -634,11 +664,11 @@ class Fitter():
             out2 = None
             if self.first_pass:
                 peaks_found, composite_model, params = self.peaks2spec(x, y)
-                output = composite_model.fit(y, params, x=x, method=mthd,max_nfex=neval)
+                output = composite_model.fit(y, params, x=x, method=mthd, max_nfex=neval)
             else:
-                peaks_found, pk_model, pk_params, lt_model, lt_params = self.both2spec(x, y)
-                out1 = pk_model.fit(y, pk_params, x=x, method=mthd,max_nfex=neval)
-                out2 = lt_model.fit(y, lt_params, x=x, method=mthd,max_nfex=neval)
+                peaks_found, pk_model, pk_params, lt_model, lt_params=self.both2spec(x, y)
+                out1 = pk_model.fit(y, pk_params, x=x, method=mthd, max_nfex=neval, ftol=self.ftol)
+                out2 = lt_model.fit(y, lt_params, x=x, method=mthd, max_nfex=neval, ftol=self.ftol)
                 # out12diff=math.abs(out2.chisqr-out1.chisqr)
                 # if out12diff/min(out2.chisqr,out1.chisqr) < 0.1:
 
@@ -648,46 +678,61 @@ class Fitter():
                     output=out2
                 if verbose: print("Frame", index ,"CWT Chi-sqr",out1.chisqr,"\t Last  Chi-sqr", out2.chisqr)
                 
-            print(peaks_found)
+            # print(peaks_found)
             if verbose:
-                fig, ax = plt.subplots(1, 3, sharey=True, figsize=(15, 4))
+                fig, ax = plt.subplots(2, 2, sharey=False, figsize=(15, 12))
                 fig.suptitle('Frame '+str(i), fontsize=16)
-                ax[0].scatter(x, y, s=4, c='b')
+                ax[0,0].scatter(x, y, s=4, c='b')
                 if not self.first_pass:
+                    ax[1,0].scatter(x, y, s=4, c='y')
+                    ax[1,1].scatter(x, y, s=4, c='y')
                     for peak in peaks_found:
-                        ax[0].axvline(x=peak, c='black', linestyle='dotted')
+                        ax[0,0].axvline(x=peak, c='black', linestyle='dotted')
                         
                     comps = out1.eval_components(x=x)
                     for each in comps:
-                        ax[1].plot(x, comps[each], '--', label=each)
-                    ax[1].legend()
-                    ax[1].set_title("Peak Fitting with CWT Peak Parameters")
+                        ax[1,0].plot(x, comps[each], '--', label=each)
+                    ax[1,0].legend()
+                    ax[1,0].set_title("Peak Fitting with CWT Peak Parameters")
 
                     comps = out2.eval_components(x=x)
                     for each in comps:
-                        ax[2].plot(x, comps[each], '--', label=each)
-                    ax[2].legend()
-                    ax[2].set_title("Peak Fitting with Last Fitting Parameters")
+                        ax[1,1].plot(x, comps[each], '--', label=each)
+                    ax[1,1].legend()
+                    ax[1,1].set_title("Peak Fitting with Last Fitting Parameters")
                 else:
                     for peak in peaks_found:
-                        ax[0].axvline(x=x[peak], c='black', linestyle='dotted')
+                        ax[0,0].axvline(x=x[peak], c='black', linestyle='dotted')
 
                 comps = output.eval_components(x=x)
                 first_m=True
                 for each in comps:
-                    ax[0].plot(x, comps[each], '--', label=each)
+                    ax[0,0].plot(x, comps[each], '--', label=each)
                     if first_m:
                         accu_comps = comps[each]
                         first_m = False
                     else:
                         accu_comps += comps[each]
-                ax[0].plot(x, accu_comps, 'r--', label="sum")
-                ax[0].legend()
-                ax[0].set_title("Best Fit")
-                ax[1].scatter(x, y, s=4, c='y')
-                ax[2].scatter(x, y, s=4, c='y')
+                ax[0,0].plot(x, accu_comps, 'r--', label="sum")
+                ax[0,0].legend()
+                ax[0,0].set_title("Best Fit")
+                ax[0,1].plot(x, 0*np.arange(len(x)), 'k-', label="sum", alpha=0.3)
+                ax[0,1].plot(x, y-accu_comps, 'ro', label="sum")
+                ax[0,1].plot(x, y-accu_comps, 'b-', label="sum", alpha=0.1)
+                # ax[0,1].legend()
+                ax[0,1].set_title("Residual " + str(sum(np.multiply(y-accu_comps,y-accu_comps))))
                 # plt.close()
 
+            ## Print out 
+            if verbose:
+                for name, param in output.params.items():
+                    # print(name, param)
+                    if "center" in name:
+                        if param.stderr == None:
+                            print('{:7s}    mean:{:8.5f}'.format(name, param.value))
+                            continue
+                        print('{:7s}    mean:{:8.5f}    std: {:8.5f}'.format(name, param.value, param.stderr))
+            
             self.output_series.append(output)
             self.first_pass = False # other than the first iteration, use both2spec to find the best fit
             self.param_num.append(len(output.params))
@@ -698,10 +743,10 @@ class Fitter():
             "t": np.array(self.PLevol_obj.df["t"])[:nframe-startIndex],
             "W": avgSeriesW,
             "E": avgSeriesE,
-            "min_w": self.min_w,
-            "max_w": self.max_w,
-            "min_e": Wavelen2eV(self.min_w),
-            "max_e": Wavelen2eV(self.max_w),
+            # "min_w": self.min_w,
+            # "max_w": self.max_w,
+            # "min_e": Wavelen2eV(self.min_w),
+            # "max_e": Wavelen2eV(self.max_w),
             "param_num": self.param_num,
             "sum_cnt": np.array(self.PLevol_obj.df["sum_cnt"])[startIndex:nframe],
             "IstdW": np.array(self.PLevol_obj.df["IstdW"])[startIndex:nframe],
@@ -711,26 +756,40 @@ class Fitter():
 
     def post_process(self):
         self.min_w = []
-        for output in self.output_series:
-            params = output.params
-            tmp_ctr = []
-            for i,v in enumerate(params):
-                if "center" in v:
-        #             print(i, v, params[v].value,params[v].stderr)
-                    tmp_ctr.append([ v, params[v].value,params[v].stderr])
-            tmp_ctr.sort(key = lambda x: x[1],reverse=False)
-            self.min_w.append(tmp_ctr[0][1])
-
+        # for output in self.output_series:
+        #     params = output.params
+        #     tmp_ctr = []
+        #     for i,v in enumerate(params):
+        #         if "center" in v:
+        # #             print(i, v, params[v].value,params[v].stderr)
+        #             tmp_ctr.append([ v, params[v].value,params[v].stderr])
+        #     tmp_ctr.sort(key = lambda x: x[1],reverse=False)
+        #     self.min_w.append(tmp_ctr[0][1])
+        self.mid_w = []
         self.max_w = []
+        self.peaks = []
+        # self.peaks_h = []
         for output in self.output_series:
-            params = output.params
+            # params = output.params
             tmp_ctr = []
-            for i,v in enumerate(params):
-                if "center" in v:
+            tmp_ht = []
+            for name, param in output.params.items():
+            # for i,v in enumerate(params):
+                if "center" in name:
+                    if output.params[name[:3]+'height'].value < self.thres_amp:
+                        continue
         #             print(i, v, params[v].value,params[v].stderr)
-                    tmp_ctr.append([ v, params[v].value,params[v].stderr])
-            tmp_ctr.sort(key = lambda x: x[1], reverse=True)
-            self.max_w.append(tmp_ctr[0][1])
+                    tmp_ctr.append([param.value, output.params[name[:3]+'height'].value])
+                    # tmp_ht.append()
+            # tmp_ctr.sort()
+            # self.min_w.append(tmp_ctr[0])
+            # self.max_w.append(tmp_ctr[-1])
+            # if len(tmp_ctr) < 3:
+            #     self.mid_w.append(tmp_ctr[0])
+            # if len(tmp_ctr) == 3:
+            #     self.mid_w.append(tmp_ctr[1])
+            tmp_ctr = np.array(tmp_ctr)
+            self.peaks.append(tmp_ctr)
 
     
     def peak_avg(self, out):
@@ -740,12 +799,13 @@ class Fitter():
             out: a lmfit output object
         
         Returns:
-            peak height weighted average
+            peak area weighted average
         """
         numer = 0
         denom = 0
         for each in out.params:
             if each.find("center") != -1:
+                # Calculate area weighted average from fit results
                 denom += out.params[each[:3]+'height'].value*out.params[each[:3]+'sigma'].value
                 numer += out.params[each].value*out.params[each[:3]+'height'].value*out.params[each[:3]+'sigma'].value
         return numer/denom
