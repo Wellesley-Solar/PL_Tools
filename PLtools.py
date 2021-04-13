@@ -740,7 +740,7 @@ class Fitter():
         avgSeriesW = np.array([self.peak_avg(each) for each in self.output_series])
         avgSeriesE = Wavelen2eV(avgSeriesW)
         self.df=pd.DataFrame({
-            "t": np.array(self.PLevol_obj.df["t"])[:nframe-startIndex],
+            "t": np.array(self.PLevol_obj.df["t"])[startIndex:nframe],
             "W": avgSeriesW,
             "E": avgSeriesE,
             # "min_w": self.min_w,
@@ -822,7 +822,7 @@ class Fitter():
         
         fig, ax = plt.subplots(1,1)
         # if mode=="W":
-        ax.scatter(np.arange(len(self.df[mode])), self.df[mode], label="Peak-Height-Weighted")
+        ax.scatter(self.df["t"], self.df[mode], label="Peak-Height-Weighted")
         # if mode=="E":
         #     ax.scatter(np.arange(len(self.avgSeriesE)), self.avgSeriesE, label="Peak-Height-Weighted")
         # elif mode=="min":
