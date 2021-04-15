@@ -13,10 +13,10 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from PLfunctions import sample_name, find_nearest, weighted_PL, trim_data
 #%% set up details of experiment and process data into a single dataframe
-path = r'/Volumes/GoogleDrive/Shared drives/Wellesley Solar/Current Projects/ Hoke Effect/PL_data_300720/MAPbI2Br/58min' # use your path
+path = r'/Volumes/GoogleDrive/Shared drives/Wellesley Solar/Current Projects/ Hoke Effect/PL/PL_data_300720/MAPbI5Br5/2min' # use your path
 all_files = sorted(glob.glob(path + "/*.csv"))
-chem = 'MAPbI2Br'
-exp = '58min'
+chem = 'MAPbI5Br'
+exp = '2min'
 laser = '488nm'
 power = '5mW'
 OD = '1p5'
@@ -89,9 +89,9 @@ for x in range(len(fullset.columns)-1):
     cofm_PL.append(weighted_PL(wave,PL_back[:,x]))
 plt.figure(num = 2, figsize=(8,6))
 fig2,ax2 = plt.subplots()
-ax1.set_xlabel('Time [s]',size=14) #Define x-axis label
-ax1.set_ylabel('Weighted Average PL [nm]',size=14)#Define y-axis label
-ax1.set_ylim([650,800])
+ax2.set_xlabel('Time [s]',size=14) #Define x-axis label
+ax2.set_ylabel('Weighted Average PL [nm]',size=14)#Define y-axis label
+ax2.set_ylim([650,800])
 plt.plot(time,cofm_PL, 'ko--', label=chem)
 plt.legend(loc="lower right")#Put legend in upper left hand corner
 # %%
