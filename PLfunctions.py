@@ -36,5 +36,16 @@ def exp_fit(x,a,b,c):
     x = np.array(x)
     return -1*a*np.exp(x*-1*b)+c
 
+def back_subtract(x, data, length):
+    #x is a 1D array of two theta or q values
+    #data is an array of x-ray intensities
+    #length is the number of values on the edges of the data you want to use to create a linear background 
+    x_linear = np.hstack((x[0:length], x[-length:-1])) #I'm taking the starting and ending values
+    data_linear = np.hstack((data[0:length], data[-length:-1])) #We'll use these to fit a straight line
+    slope, intercept = np.polyfit(x_linear, data_linear, 1) #Do linear fit
+    back = slope*x+intercept 
+    data_correct=(data-back)
+    return data_correct
+
 
 # %%

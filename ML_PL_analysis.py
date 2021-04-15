@@ -6,17 +6,17 @@ import glob
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from PLfunctions import sample_name, find_nearest, weighted_PL, trim_data
-from xrdfunctions import back_subtract
+from PLfunctions import sample_name, find_nearest, weighted_PL, trim_data, back_subtract
+
 
 # %%    Create dictionary for storing analyzed results - to be run at the start of a new session
 samplelist = []
 results = {"Sample":"Results"}
 
 #%%     Set up details of experiment and process data into a single dataframe
-path = r'/Users/rbelisle/Desktop/4_1_21_PL/Data/chem50' # use your path
+path = r'/Users/rbelisle/Desktop/ML_Round2/chem2' # use your path
 all_files = sorted(glob.glob(path + "/*.csv"))
-chem = 'chem33'
+chem = 'chem2'
 exp = '1 hour'
 laser = '488nm'
 power = '5mW'
@@ -24,9 +24,9 @@ OD = '1p5'
 integration = '20ms'
 first_background = True #Use first frame as background
 
-exp_frames = [180, 6] #measurements in the format [[time1, frames1], [time2, frames2]]
+exp_frames = [60, 40] #measurements in the format [frames1,frames2]
 lim1 = 550 #high energy cutoff
-lim2 = 950 #low energy cutoff
+lim2 = 900 #low energy cutoff
 
 #   Initialize timing and determine delays
 #   TODO this cell should be a function
@@ -38,6 +38,7 @@ restart_time = [int(x) for x in time_2]
 restart_sec = restart_time[0]*60**2+restart_time[1]*60+restart_time[2]
 delay = restart_sec-start_sec
 
+#%%
 #   Pull start times from dataset
 times = []
 df = pd.read_csv(all_files[0])
@@ -65,7 +66,7 @@ for f_name in all_files[exp_frames[0]:]:
     fullset = pd.concat([fullset, temp[["Intensity"+str(exp_time)]]], axis=1) #add intensity data to file
     times.append(exp_time+delay) #save time 
 
-fullset.to_csv(path+'ALL'+sample_name(chem,exp,laser,power,OD,str(integration)))
+#fullset.to_csv(path+'ALL'+sample_name(chem,exp,laser,power,OD,str(integration)))
 # TODO may want to add a line that creates this folder if it does not exist
 
 #%%     Breaking down data for plotting full specta
@@ -75,6 +76,7 @@ PL = fulldata[:,1:]
 times = np.array(times)
 laser_on = 2 #frame at which the laser turns on
 
+#%%
 #   Subtract background
 if first_background:
     dark = laser_on - 1
@@ -116,7 +118,7 @@ fig2,ax2 = plt.subplots()
 ax2.set_xlabel('Time [s]',size=14) #Define x-axis label
 ax2.set_ylabel('Weighted Average PL [nm]',size=14)#Define y-axis label
 #ax2.set_ylim([650,800])
-ax2.set_xlim([0,500])
+ax2.set_xlim([0,1750])
 plt.plot(time_s,cofm_PL, 'ko--', label=chem)
 plt.legend(loc="lower right")#Put legend in upper left hand corner
 
@@ -126,7 +128,7 @@ samplelist.append(chem)
 datatostore = [time_s,  cofm_PL]
 results[chem] = datatostore
 # %%
-samplelist_sub = samplelist[3:-1]
+samplelist_sub = samplelist
 plt.figure(num = 2, figsize=(8,6))
 fig2,ax2 = plt.subplots()
 for each in samplelist_sub:
