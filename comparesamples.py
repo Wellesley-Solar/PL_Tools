@@ -13,7 +13,7 @@ from scipy.optimize import curve_fit
 from PLfunctions import sample_name, find_nearest, weighted_PL, trim_data, exp_fit
 
 #%% identify location of relevant files
-path = r'/Volumes/GoogleDrive/Shared drives/Wellesley Solar/Current Projects/ Hoke Effect/PL_data_300720/All chemistries' # use your path
+path = r'/Volumes/GoogleDrive/Shared drives/Wellesley Solar/Current Projects/ Hoke Effect/PL/PL_data_300720/All chemistries' # use your path
 all_files = sorted(glob.glob(path + "/*.csv"))
 
 # %% manually assign all data to chemistry
@@ -38,7 +38,7 @@ fig1,ax1 = plt.subplots()
 ax1.set_xlabel('Wavelength [nm]',size=14) #Define x-axis label
 ax1.set_ylabel('Intensity [a.u.]',size=14)#Define y-axis label
 #ax1.set_ylim([0,1000])
-ax1.set_xlim([575,900])
+ax1.set_xlim([550,900])
 plt.plot(wave_0,(Br0_trim[:,0]-Br0_trim[1,0])/max((Br0_trim[:,0]-Br0_trim[1,0])), 'k-', label='x=0')
 plt.plot(wave_33,(Br33_trim[:,1]-Br33_trim[:,0])/max(Br33_trim[:,1]-Br33_trim[:,0]), 'b-', label='x=0.33')
 plt.plot(wave_50,(Br50_trim[:,1]-Br50_trim[:,0])/max(Br50_trim[:,1]-Br50_trim[:,0]), 'r-',label='x=0.50')
@@ -48,7 +48,7 @@ plt.plot(wave_75,(Br75_trim[:,2]-Br75_trim[:,0])/max(Br75_trim[:,2]-Br75_trim[:,
 plt.legend(loc="upper right")#Put legend in upper left hand corner
 #TODO look to see if 90% high energy PL laser or PL
 #TODO determine peak PL wavelength for doing initial bandgap PL
-fig1.savefig(path+"/10ms.png")
+#fig1.savefig(path+"/10ms.png")
 
 #%% Determine initial wavelength
 initial_PL = []
