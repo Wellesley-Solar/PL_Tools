@@ -88,7 +88,8 @@ class PLspec:
         """Plot the spectrum in the format of intensity versus wavelength
         
         Args:
-            None
+            mode: str, the x-axis of the plot is always time, choosing the y-axis to
+            be either "E" for photon energy, or "W" for nanometer wavelength
         
         Returns:
             None
@@ -102,7 +103,7 @@ class PLspec:
         
         
     def retore(self):
-        """Remove the cutoff for the spectrum data
+        """Remove the cutoff for the spectrum data and restore the data back to its full length
         
         Args:
             None
@@ -197,6 +198,16 @@ class PLevol:
 
 
     def ridge(self, n=5, fset=0.15, alpha=0.3, startIndex=0):
+        """ Making ridgeline plots across a set of PL frame
+        Args:
+            n: int, the number of frames to display in a ridgeline plot
+            fset: float, vertical offset between individuals frames in ridgeline plot
+            alpha: float, the transparency of the ridgeline fill-ins
+            and the first element specifies the name of the y-data column
+            startIndex: int, which frame to start making ridgelines
+        Returns:
+            None
+        """
         fig, ax = plt.subplots()
         i_frames = startIndex+np.linspace(0,len(self.df_alt.columns)-1, n, endpoint=False,)
         i_frames = i_frames[::-1]
@@ -217,6 +228,17 @@ class PLevol:
 
 
     def BH_cosmic_remove(self, cosmic_prom=24, startIndex=0, max_pixel=10):
+        """ Remove sharp peaks possibly due to cosmic background radiation in the data. For the explanation on
+        the implementation, please refer to the section in the corresponding thesis
+        Args:
+            cosmic_prom: int, prominence threshold of cosmic ray. It multiplies the individual datapoints' differences
+            between two most similar frames
+            startIndex: int, which frame to start making ridgelines
+            max_pixel: int, the maximum number of data points in a frame allowed to be deemed
+            to be sharp enough for cosmic ray
+        Returns:
+            None
+        """
         self.S = np.matrix([each.df["I"].values for each in self.PLs])
         self.mat_bar = np.matrix([
             signal.savgol_filter(each.df["I"].values, window_length=5, polyorder=1) for each in self.PLs
@@ -260,10 +282,29 @@ class PLevol:
 
 
     def heatmap(self, matrix, figsize = (20, 10), cmap="hot"):
+        """ Plot the entire timeseries of PL intensities in the form of a heatmap
+
+        Args:
+            matrix: 2d-array like, whose rows are individual frames and whose columns correspond to PL wavelength
+            figsize: int, figure size of heatmap
+            cmap: str, colormap style for the heatmap
+
+        Returns:
+            None
+        """
         fig, scatter = plt.subplots(figsize = (20,10))
         sn.heatmap(matrix, cmap="hot")
 
     def noise_std_est(self, m1, m2):
+        """ Estimate the noise level of the measurement.
+
+        Args:
+            m1: 1d-array like, individual frame intensity of a row
+            m2: 1d-array like, individual frame intensity of a different row
+        
+        Returns:
+            None
+        """
         mat_diff = m1 - m2
         sig_n = np.zeros((m1.shape[0], 1))
         for i,_ in  enumerate(m1):
@@ -274,6 +315,14 @@ class PLevol:
 
 
     def sim_spec_res(self, m1, startIndex=0):
+        """ swap the rows of the input matrix with its most similar rows
+
+        Args:
+            m1: 2d-array like
+        
+        Returns:
+            a matrix whose column has been reordered
+        """
         sim_spec = np.arange(m1.shape[0])
         for frame in np.arange(0, m1.shape[0]-startIndex)+startIndex:
             tmp=np.where(self.C_nm[frame,:]==max(self.C_nm[frame,:]))[0]
@@ -282,7 +331,7 @@ class PLevol:
 
 
     def restore(self):
-        """Remove the cutoff for the spectrum data
+        """Remove the cutoff for the spectrum data and restore the data back to its full length
         
         Args:
             None
@@ -324,7 +373,8 @@ class PLevol:
         """ Plot a series of peak height weighted average from self.output_series
 
         Args:
-            make_plot: boolean, if True, plots the series of peak height weighted averages
+            mode: str, the x-axis of the plot is always time, choosing the y-axis to
+            be either "E" for photon energy, or "W" for nanometer wavelength
         
         Returns:
             None
@@ -814,7 +864,8 @@ class Fitter():
         """ Plot a series of peak height weighted average from self.output_series
 
         Args:
-            make_plot: boolean, if True, plots the series of peak height weighted averages
+            mode: str, the x-axis of the plot is always time, choosing the y-axis to
+            be either "E" for photon energy, or "W" for nanometer wavelength
         
         Returns:
             None
