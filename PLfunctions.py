@@ -22,7 +22,7 @@ def trim_data(x, data, limit1, limit2):
     #limit1 and limit2 are what you'd like to trime your data to 
     set1 = find_nearest(x,limit1)
     set2 = find_nearest(x,limit2)
-    return x[set1:set2], data[set1:set2,:]
+    return x[set1:set2], data[set1:set2]
 
 def weighted_PL(wave,intensity):
     return np.sum(wave*intensity)/np.sum(intensity)
