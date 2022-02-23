@@ -22,10 +22,9 @@ OD = '1p5'
 lim1 = 600 #high energy cutoff
 lim2 = 850 #low energy cutoff
 
-#%%
+#%% 
 #open file
 for each in all_files:
-    print(chem)
     df = pd.read_csv(each)
     chem = each.split('_')[-1].split('.')[0]
 
@@ -39,8 +38,9 @@ for each in all_files:
     last = df[df['Frame'] == np.max(df['Frame'])]['Intensity']
     #%%
 
+    # for x in df['Frame'].unique():
     for x in range(1,np.max(df['Frame'])):
-        current = df[df['Frame'] == x] #read file
+        current = df[df['Frame'] == x] #read specific frame
         wave = current['Wavelength']
         intensity = current['Intensity'] 
         wave_cut, PL_cut = trim_data(wave,intensity,lim1,lim2)
