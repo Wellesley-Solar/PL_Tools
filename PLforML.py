@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from PLfunctions import back_subtract, sample_name, find_nearest, weighted_PL, trim_data
 #%% set up details of experiment and process data into a single dataframe
-path = r'/Volumes/GoogleDrive/Shared drives/Wellesley Solar/Current Projects/Fall 2021 New Triple Halide Perovskite Search/211223_round2_PL' # use your path
+path = r'/Users/rbelisle/Library/CloudStorage/GoogleDrive-rbelisle@wellesley.edu/Shared drives/Wellesley Solar/Current Projects/ML_CsFaPbX3/Summer 2021 New Triple Halide Perovskite Search/Round 2_2/07222021_488nm_5mW_1p5_Chem14 2021 July 22 15_10_25.csv' # use your path
 all_files = sorted(glob.glob(path + "/*.csv"))
 exp = '4hrs'
 laser = '488nm'
